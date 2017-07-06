@@ -13,23 +13,24 @@ namespace VoiceRecorder
         private LameMP3FileWriter writer = null;
         private MMDeviceEnumerator devEnum { get; }
         private MMDevice defaultDevice { get; }
-        private string tempFolder = @"\write\";
+        public string tempFolder = @"C:\Voice\Temp\";
         private string currentFileName = "";
+        public bool recording = false;
         private Thread soundThread;
-        public float voiceLevel = 0.04f;
+        public float voiceLevel = 0.01f;
         public int silence = 0;
-        public int maxSilence = 15000;
-        public string outputFolder = @"\ready\";
+        public int maxSilence = 500;
+        public string outputFolder = @"C:\Voice\Output\";
 
         public Recorder()
         {
             wavein = new WaveIn();
             wavein.DeviceNumber = 0;
-            wavein.WaveFormat = new WaveFormat();
+            wavein.WaveFormat = new WaveFormat();            
             devEnum = new MMDeviceEnumerator();
             defaultDevice = devEnum.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
             wavein.DataAvailable += Wavein_DataAvailable;
-            checkFolders();
+            //checkFolders();
         }
 
         public void checkFolders()
@@ -50,14 +51,18 @@ namespace VoiceRecorder
         public string GetNextFileName()
         {
             var rand = new Random();
-            return String.Format("{0:dd - MM - yyyy}{1:HH-mm-ss}({2}).mp3", DateTime.Now, DateTime.Now, rand.Next().ToString());
+            return String.Format("{0:dd - MM - yyyy}_{1:HH-mm-ss}_({2}).mp3", DateTime.Now, DateTime.Now, rand.Next().ToString());
         }
 
         private void Wavein_DataAvailable(object sender, WaveInEventArgs e)
-        {
+        {            
             float level = this.GetCurrentPeak();
             if (level > voiceLevel)
             {
+                recording = true;
+                silence = 0;
+            }
+            if (recording) { 
                 if (writer != null)
                 {
                     writer.Write(e.Buffer, 0, e.BytesRecorded);
@@ -65,12 +70,12 @@ namespace VoiceRecorder
                 else
                 {
                     currentFileName = GetNextFileName();
-                    writer = new LameMP3FileWriter(currentFileName, wavein.WaveFormat, LAMEPreset.MEDIUM_FAST);
+                    writer = new LameMP3FileWriter(tempFolder+currentFileName, wavein.WaveFormat, LAMEPreset.MEDIUM_FAST);
                 }
             }
         }
 
-        private void Silence()
+        public void Silence()
         {
             if (GetCurrentPeak() < voiceLevel)
             {
@@ -82,8 +87,14 @@ namespace VoiceRecorder
                 writer.Dispose();
                 writer = null;
                 silence = 0;
-                File.Move(tempFolder + currentFileName, this.outputFolder + currentFileName);
+                recording = false;
+                File.Move(tempFolder + currentFileName, outputFolder + currentFileName);
             }
+        }
+
+        public int GetSilence()
+        {
+            return this.silence;
         }
 
         private void StartSilence()
@@ -92,7 +103,7 @@ namespace VoiceRecorder
         }
 
         public void StartListener()
-        {
+        {            
             soundThread = new Thread(wavein.StartRecording);
             soundThread.Priority = ThreadPriority.Normal;
             soundThread.Start();
@@ -100,7 +111,7 @@ namespace VoiceRecorder
 
         public void StopListener()
         {
-            soundThread.Suspend();
+            //soundThread.Suspend();
             this.wavein.StopRecording();
         }
 
